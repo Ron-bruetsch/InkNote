@@ -121,6 +121,18 @@ export class CanvasEngine {
     this._notifyChange();
   }
 
+  updateEmbedContent(id, content) {
+    const embed = this.embeds.find(e => e.id === id);
+    if (embed) embed.content = content;
+    this._notifyChange();
+  }
+
+  updateEmbedColor(id, color) {
+    const embed = this.embeds.find(e => e.id === id);
+    if (embed) embed.color = color;
+    this._notifyChange();
+  }
+
   // ─── Transform ───────────────────────────────────────────────────────────
 
   panBy(dx, dy) {

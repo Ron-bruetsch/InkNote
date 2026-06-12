@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+
+# SQLite database (runtime data)
+*.db
+*.db-shm
+*.db-wal
+
+# .NET user secrets and local overrides
+appsettings.Development.json
+appsettings.Local.json
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.vs/
+*.suo
+*.user
+.idea/

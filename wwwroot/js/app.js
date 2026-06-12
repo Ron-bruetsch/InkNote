@@ -28,7 +28,10 @@ async function init() {
   embedMgr = new EmbedManager(engine, embedsLayer);
 
   engine.onChange = () => scheduleSave();
-  engine.onToolChange = (tool) => updateToolbar(tool);
+  engine.onToolChange = (tool) => {
+    updateToolbar(tool);
+    embedMgr.setInteractive(tool === 'pan');
+  };
 
   // Color picker
   const cpContainer = document.getElementById('color-picker-panel');
@@ -92,6 +95,16 @@ function setupToolbar() {
     else engine.toggleEraser();
   });
   document.getElementById('btn-pan').addEventListener('click', () => engine.setTool('pan'));
+
+  document.getElementById('btn-text').addEventListener('click', () => _insertEmbed({
+    type: 'text', content: '', width: 240
+  }));
+  document.getElementById('btn-sticky').addEventListener('click', () => _insertEmbed({
+    type: 'sticky', content: '', color: '#fef08a', width: 200, height: 200
+  }));
+  document.getElementById('btn-code').addEventListener('click', () => _insertEmbed({
+    type: 'code', content: '', language: 'auto', width: 460, height: 280
+  }));
 
   document.getElementById('btn-undo').addEventListener('click', () => { engine.undo(); updateUndoRedo(); });
   document.getElementById('btn-redo').addEventListener('click', () => { engine.redo(); updateUndoRedo(); });
@@ -366,6 +379,22 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 function esc(s) { return s?.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') ?? ''; }
+
+// ─── Insert embeds ────────────────────────────────────────────────────────────
+
+function _insertEmbed(fields) {
+  const rect = document.getElementById('canvas-container').getBoundingClientRect();
+  const center = engine.screenToCanvas(rect.width / 2, rect.height / 2);
+  const embed = {
+    id: api.generateId(),
+    x: center.x - (fields.width  || 0) / 2,
+    y: center.y - (fields.height || 0) / 2,
+    ...fields
+  };
+  engine.setTool('pan');
+  embedMgr.focusPendingId = embed.id;
+  engine.addEmbed(embed);
+}
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 init().catch(console.error);

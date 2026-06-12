@@ -1,10 +1,31 @@
 import { getLinkPreview, generateId } from './api.js';
 
+const STICKY_COLORS = ['#fef08a', '#fca5a5', '#86efac', '#93c5fd', '#d8b4fe', '#fdba74'];
+
+const CODE_LANGUAGES = [
+  { value: 'auto',       label: 'Auto' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'python',     label: 'Python' },
+  { value: 'csharp',     label: 'C#' },
+  { value: 'java',       label: 'Java' },
+  { value: 'cpp',        label: 'C++' },
+  { value: 'rust',       label: 'Rust' },
+  { value: 'go',         label: 'Go' },
+  { value: 'html',       label: 'HTML' },
+  { value: 'css',        label: 'CSS' },
+  { value: 'sql',        label: 'SQL' },
+  { value: 'bash',       label: 'Shell' },
+  { value: 'json',       label: 'JSON' },
+  { value: 'markdown',   label: 'Markdown' },
+];
+
 export class EmbedManager {
   constructor(engine, embedsLayer) {
     this.engine = engine;
     this.layer = embedsLayer;
     this.elements = new Map(); // id -> DOM element
+    this.focusPendingId = null;
 
     engine.onEmbedsChange = (embeds) => this.syncAll(embeds);
   }
@@ -12,7 +33,6 @@ export class EmbedManager {
   syncAll(embeds) {
     const ids = new Set(embeds.map(e => e.id));
 
-    // Remove deleted
     for (const [id, el] of this.elements) {
       if (!ids.has(id)) {
         el.remove();
@@ -20,7 +40,6 @@ export class EmbedManager {
       }
     }
 
-    // Add or update
     for (const embed of embeds) {
       if (!this.elements.has(embed.id)) {
         this._createElement(embed);
@@ -34,7 +53,6 @@ export class EmbedManager {
     const trimmed = text.trim();
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
 
-    // Center of visible canvas
     const rect = this.engine.container.getBoundingClientRect();
     const cx = (rect.width / 2 - this.engine.tx) / this.engine.scale;
     const cy = (rect.height / 2 - this.engine.ty) / this.engine.scale;
@@ -44,29 +62,16 @@ export class EmbedManager {
     let embed;
     if (preview.isYoutube) {
       embed = {
-        id: generateId(),
-        type: 'youtube',
-        url: trimmed,
-        videoId: preview.youtubeId,
-        title: preview.title,
-        x: cx - 320,
-        y: cy - 180,
-        width: 640,
-        height: 360
+        id: generateId(), type: 'youtube',
+        url: trimmed, videoId: preview.youtubeId, title: preview.title,
+        x: cx - 320, y: cy - 180, width: 640, height: 360
       };
     } else {
       embed = {
-        id: generateId(),
-        type: 'link',
-        url: trimmed,
-        title: preview.title,
-        description: preview.description,
-        imageUrl: preview.imageUrl,
-        siteName: preview.siteName,
-        x: cx - 180,
-        y: cy - 75,
-        width: 360,
-        height: 150
+        id: generateId(), type: 'link',
+        url: trimmed, title: preview.title, description: preview.description,
+        imageUrl: preview.imageUrl, siteName: preview.siteName,
+        x: cx - 180, y: cy - 75, width: 360, height: 150
       };
     }
 
@@ -74,7 +79,17 @@ export class EmbedManager {
     return true;
   }
 
+  setInteractive(enabled) {
+    this.layer.classList.toggle('interactive', enabled);
+  }
+
+  // ─── Element creation ────────────────────────────────────────────────────
+
   _createElement(embed) {
+    if (embed.type === 'text')   { this._createTextEl(embed);   return; }
+    if (embed.type === 'sticky') { this._createStickyEl(embed); return; }
+    if (embed.type === 'code')   { this._createCodeEl(embed);   return; }
+
     const el = document.createElement('div');
     el.className = 'embed-card';
     el.dataset.id = embed.id;
@@ -82,13 +97,7 @@ export class EmbedManager {
     el.style.top = embed.y + 'px';
     el.style.width = embed.width + 'px';
 
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'embed-close';
-    closeBtn.innerHTML = '&times;';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.engine.removeEmbed(embed.id);
-    });
+    const closeBtn = _makeClose(() => this.engine.removeEmbed(embed.id));
 
     if (embed.type === 'youtube') {
       el.classList.add('embed-video');
@@ -112,20 +121,224 @@ export class EmbedManager {
     this.elements.set(embed.id, el);
   }
 
+  _createTextEl(embed) {
+    const el = document.createElement('div');
+    el.className = 'embed-card embed-text';
+    el.dataset.id = embed.id;
+    el.style.left = embed.x + 'px';
+    el.style.top = embed.y + 'px';
+    el.style.width = (embed.width || 240) + 'px';
+
+    const header = document.createElement('div');
+    header.className = 'embed-text-header';
+
+    const handle = document.createElement('span');
+    handle.className = 'embed-drag-handle';
+    handle.textContent = '⠿';
+    header.appendChild(handle);
+
+    header.appendChild(_makeCloseSmall(() => this.engine.removeEmbed(embed.id)));
+    el.appendChild(header);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'embed-text-content';
+    textarea.placeholder = 'Type here…';
+    textarea.value = embed.content || '';
+    textarea.addEventListener('pointerdown', e => e.stopPropagation());
+    textarea.addEventListener('input', () => {
+      _autoResize(textarea);
+      embed.content = textarea.value;
+      this.engine.updateEmbedContent(embed.id, embed.content);
+    });
+    el.appendChild(textarea);
+
+    this._makeDraggable(el, embed, header);
+    this.layer.appendChild(el);
+    this.elements.set(embed.id, el);
+
+    requestAnimationFrame(() => _autoResize(textarea));
+    if (this.focusPendingId === embed.id) {
+      this.focusPendingId = null;
+      requestAnimationFrame(() => textarea.focus());
+    }
+  }
+
+  _createStickyEl(embed) {
+    const color = embed.color || STICKY_COLORS[0];
+
+    const el = document.createElement('div');
+    el.className = 'embed-card embed-sticky';
+    el.dataset.id = embed.id;
+    el.style.left = embed.x + 'px';
+    el.style.top = embed.y + 'px';
+    el.style.width  = (embed.width  || 200) + 'px';
+    el.style.height = (embed.height || 200) + 'px';
+    el.style.background = color;
+
+    const header = document.createElement('div');
+    header.className = 'embed-sticky-header';
+
+    const colorRow = document.createElement('div');
+    colorRow.className = 'embed-sticky-colors';
+    for (const c of STICKY_COLORS) {
+      const btn = document.createElement('button');
+      btn.className = 'sticky-color-btn' + (c === color ? ' active' : '');
+      btn.style.background = c;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        embed.color = c;
+        el.style.background = c;
+        colorRow.querySelectorAll('.sticky-color-btn').forEach(b => b.classList.toggle('active', b === btn));
+        this.engine.updateEmbedColor(embed.id, c);
+      });
+      colorRow.appendChild(btn);
+    }
+    header.appendChild(colorRow);
+    header.appendChild(_makeCloseSmall(() => this.engine.removeEmbed(embed.id)));
+    el.appendChild(header);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'embed-sticky-content';
+    textarea.placeholder = 'Note…';
+    textarea.value = embed.content || '';
+    textarea.addEventListener('pointerdown', e => e.stopPropagation());
+    textarea.addEventListener('input', () => {
+      embed.content = textarea.value;
+      this.engine.updateEmbedContent(embed.id, embed.content);
+    });
+    el.appendChild(textarea);
+
+    this._makeDraggable(el, embed, header);
+    this.layer.appendChild(el);
+    this.elements.set(embed.id, el);
+
+    if (this.focusPendingId === embed.id) {
+      this.focusPendingId = null;
+      requestAnimationFrame(() => textarea.focus());
+    }
+  }
+
+  _createCodeEl(embed) {
+    const lang = embed.language || 'auto';
+
+    const el = document.createElement('div');
+    el.className = 'embed-card embed-code';
+    el.dataset.id = embed.id;
+    el.style.left   = embed.x + 'px';
+    el.style.top    = embed.y + 'px';
+    el.style.width  = (embed.width  || 460) + 'px';
+    el.style.height = (embed.height || 280) + 'px';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'embed-code-header';
+
+    const select = document.createElement('select');
+    select.className = 'code-lang-select';
+    for (const { value, label } of CODE_LANGUAGES) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (value === lang) opt.selected = true;
+      select.appendChild(opt);
+    }
+    header.appendChild(select);
+
+    const spacer = document.createElement('span');
+    spacer.className = 'embed-code-spacer embed-drag-handle';
+    spacer.textContent = '⠿';
+    header.appendChild(spacer);
+
+    header.appendChild(_makeCloseSmall(() => this.engine.removeEmbed(embed.id)));
+    el.appendChild(header);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'embed-code-body';
+
+    const pre = document.createElement('pre');
+    pre.className = 'embed-code-pre';
+    const codeEl = document.createElement('code');
+    codeEl.className = 'embed-code-el';
+    pre.appendChild(codeEl);
+    body.appendChild(pre);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'embed-code-textarea';
+    textarea.spellcheck = false;
+    textarea.value = embed.content || '';
+    textarea.addEventListener('pointerdown', e => e.stopPropagation());
+    textarea.addEventListener('keydown', e => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const s = textarea.selectionStart, end = textarea.selectionEnd;
+        textarea.value = textarea.value.slice(0, s) + '  ' + textarea.value.slice(end);
+        textarea.selectionStart = textarea.selectionEnd = s + 2;
+      }
+    });
+    textarea.addEventListener('input', () => {
+      embed.content = textarea.value;
+      this.engine.updateEmbedContent(embed.id, embed.content);
+    });
+    textarea.addEventListener('blur', () => {
+      _highlightCode(codeEl, embed.content || '', embed.language || 'auto');
+      _setCodeEmpty(pre, !embed.content);
+      textarea.style.display = 'none';
+      pre.style.display = '';
+    });
+    body.appendChild(textarea);
+    el.appendChild(body);
+
+    // Click pre → switch to edit (pan mode only)
+    pre.addEventListener('click', () => {
+      if (this.engine.tool !== 'pan') return;
+      pre.style.display = 'none';
+      textarea.style.display = '';
+      textarea.focus();
+    });
+
+    // Language change
+    select.addEventListener('change', () => {
+      embed.language = select.value;
+      if (textarea.style.display === 'none') {
+        _highlightCode(codeEl, embed.content || '', embed.language);
+      }
+      this.engine.updateEmbedContent(embed.id, embed.content || '');
+    });
+
+    this._makeDraggable(el, embed, header);
+    this.layer.appendChild(el);
+    this.elements.set(embed.id, el);
+
+    // Initial state
+    if (embed.content) {
+      _highlightCode(codeEl, embed.content, lang);
+    } else {
+      _setCodeEmpty(pre, true);
+    }
+
+    if (this.focusPendingId === embed.id) {
+      this.focusPendingId = null;
+      requestAnimationFrame(() => {
+        pre.style.display = 'none';
+        textarea.style.display = '';
+        textarea.focus();
+      });
+    }
+  }
+
   _linkCardHTML(embed) {
     const img = embed.imageUrl
       ? `<div class="embed-thumb" style="background-image:url('${escapeHtml(embed.imageUrl)}')"></div>`
       : '';
-    const site = embed.siteName ? `<span class="embed-site">${escapeHtml(embed.siteName)}</span>` : '';
-    const title = embed.title ? `<div class="embed-title">${escapeHtml(embed.title)}</div>` : '';
-    const desc = embed.description ? `<div class="embed-desc">${escapeHtml(embed.description)}</div>` : '';
+    const site  = embed.siteName    ? `<span class="embed-site">${escapeHtml(embed.siteName)}</span>` : '';
+    const title = embed.title       ? `<div class="embed-title">${escapeHtml(embed.title)}</div>`     : '';
+    const desc  = embed.description ? `<div class="embed-desc">${escapeHtml(embed.description)}</div>` : '';
     return `
       ${img}
       <div class="embed-info">
-        ${site}
-        ${title}
-        ${desc}
-        <a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener" class="embed-url">${escapeHtml(embed.url.slice(0, 60))}${embed.url.length > 60 ? '...' : ''}</a>
+        ${site}${title}${desc}
+        <a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener" class="embed-url">${escapeHtml(embed.url.slice(0, 60))}${embed.url.length > 60 ? '…' : ''}</a>
       </div>`;
   }
 
@@ -133,48 +346,94 @@ export class EmbedManager {
     const el = this.elements.get(embed.id);
     if (el) {
       el.style.left = embed.x + 'px';
-      el.style.top = embed.y + 'px';
+      el.style.top  = embed.y + 'px';
     }
   }
 
-  _makeDraggable(el, embed) {
-    let dragging = false;
-    let startX, startY, startEX, startEY, capturedId;
+  // ─── Drag ────────────────────────────────────────────────────────────────
+  // handle defaults to el (whole-card drag for youtube/link).
+  // For text/sticky, pass the header element so the body stays typeable.
 
-    el.addEventListener('pointerdown', e => {
+  _makeDraggable(el, embed, handle = el) {
+    let dragging = false, startX, startY, startEX, startEY, capturedId;
+    const fullCard = handle === el;
+
+    handle.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
-      if (e.target.closest('iframe') || e.target.closest('a') || e.target.closest('.embed-close')) return;
+      // Full-card drag: skip iframes, links, and the overlay close button
+      if (fullCard && (e.target.closest('iframe') || e.target.closest('a') || e.target.closest('.embed-close'))) return;
+      // Header drag: skip buttons and selects (close, color swatches, lang picker)
+      if (!fullCard && e.target.closest('button, select')) return;
+      if (this.engine.tool !== 'pan') return;
       e.stopPropagation();
       e.preventDefault();
       dragging = true;
       capturedId = e.pointerId;
-      startX = e.clientX;
-      startY = e.clientY;
-      startEX = embed.x;
-      startEY = embed.y;
-      el.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      startEX = embed.x;  startEY = embed.y;
+      handle.setPointerCapture(e.pointerId);
       el.style.cursor = 'grabbing';
     });
 
-    el.addEventListener('pointermove', e => {
+    handle.addEventListener('pointermove', e => {
       if (!dragging || e.pointerId !== capturedId) return;
       const dx = (e.clientX - startX) / this.engine.scale;
       const dy = (e.clientY - startY) / this.engine.scale;
       embed.x = startEX + dx;
       embed.y = startEY + dy;
       el.style.left = embed.x + 'px';
-      el.style.top = embed.y + 'px';
+      el.style.top  = embed.y + 'px';
     });
 
     const endDrag = e => {
       if (!dragging || e.pointerId !== capturedId) return;
       dragging = false;
-      el.style.cursor = '';
+      el.style.cursor = fullCard ? 'grab' : '';
       this.engine.updateEmbedPosition(embed.id, embed.x, embed.y);
     };
-    el.addEventListener('pointerup', endDrag);
-    el.addEventListener('pointercancel', endDrag);
+    handle.addEventListener('pointerup',     endDrag);
+    handle.addEventListener('pointercancel', endDrag);
   }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function _makeClose(onClick) {
+  const btn = document.createElement('button');
+  btn.className = 'embed-close';
+  btn.innerHTML = '&times;';
+  btn.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+  return btn;
+}
+
+function _makeCloseSmall(onClick) {
+  const btn = document.createElement('button');
+  btn.className = 'embed-close-sm';
+  btn.innerHTML = '&times;';
+  btn.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+  return btn;
+}
+
+function _autoResize(textarea) {
+  textarea.style.height = 'auto';
+  textarea.style.height = textarea.scrollHeight + 'px';
+}
+
+function _highlightCode(codeEl, content, language) {
+  const hljs = window.hljs;
+  if (!hljs) { codeEl.textContent = content; return; }
+  try {
+    const result = (language && language !== 'auto')
+      ? hljs.highlight(content, { language })
+      : hljs.highlightAuto(content);
+    codeEl.innerHTML = result.value;
+  } catch {
+    codeEl.textContent = content;
+  }
+}
+
+function _setCodeEmpty(pre, empty) {
+  pre.classList.toggle('embed-code-pre-empty', empty);
 }
 
 function escapeHtml(s) {
