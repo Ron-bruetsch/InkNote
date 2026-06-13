@@ -361,9 +361,9 @@ export class EmbedManager {
     handle.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
       // Full-card drag: skip iframes, links, and the overlay close button
-      if (fullCard && (e.target.closest('iframe') || e.target.closest('a') || e.target.closest('.embed-close'))) return;
+      if (fullCard && (e.target.closest('iframe') || e.target.closest('a') || e.target.closest('.embed-close'))) { e.stopPropagation(); return; }
       // Header drag: skip buttons and selects (close, color swatches, lang picker)
-      if (!fullCard && e.target.closest('button, select')) return;
+      if (!fullCard && e.target.closest('button, select')) { e.stopPropagation(); return; }
       if (this.engine.tool !== 'pan') return;
       e.stopPropagation();
       e.preventDefault();
@@ -402,6 +402,7 @@ function _makeClose(onClick) {
   const btn = document.createElement('button');
   btn.className = 'embed-close';
   btn.innerHTML = '&times;';
+  btn.addEventListener('pointerdown', e => e.stopPropagation());
   btn.addEventListener('click', e => { e.stopPropagation(); onClick(); });
   return btn;
 }
@@ -410,6 +411,7 @@ function _makeCloseSmall(onClick) {
   const btn = document.createElement('button');
   btn.className = 'embed-close-sm';
   btn.innerHTML = '&times;';
+  btn.addEventListener('pointerdown', e => e.stopPropagation());
   btn.addEventListener('click', e => { e.stopPropagation(); onClick(); });
   return btn;
 }

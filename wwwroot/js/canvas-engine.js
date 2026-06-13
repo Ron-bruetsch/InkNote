@@ -397,6 +397,7 @@ export class CanvasEngine {
   }
 
   _onDown(e) {
+    if (this.embedsLayer.contains(e.target)) return;
     e.preventDefault();
     // Palm rejection: ignore finger touches while a stylus is active
     if (e.pointerType === 'touch' && [...this.activePointers.values()].some(p => p.type === 'pen')) return;
