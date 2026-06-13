@@ -293,7 +293,7 @@ export class EmbedManager {
     pre.addEventListener('click', () => {
       if (this.engine.tool !== 'pan') return;
       pre.style.display = 'none';
-      textarea.style.display = '';
+      textarea.style.display = 'block';
       textarea.focus();
     });
 
@@ -321,7 +321,7 @@ export class EmbedManager {
       this.focusPendingId = null;
       requestAnimationFrame(() => {
         pre.style.display = 'none';
-        textarea.style.display = '';
+        textarea.style.display = 'block';
         textarea.focus();
       });
     }
