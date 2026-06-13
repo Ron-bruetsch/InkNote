@@ -416,15 +416,24 @@ export class EmbedManager {
         delete embed._cx; delete embed._cy;
         embed.x = cx - w / 2;
         embed.y = cy - h / 2;
-        el.style.width  = w + 'px';
-        el.style.height = h + 'px';
-        el.style.left   = embed.x + 'px';
-        el.style.top    = embed.y + 'px';
+        el.style.width   = w + 'px';
+        el.style.height  = h + 'px';
+        img.style.width  = w + 'px';
+        img.style.height = h + 'px';
+        el.style.left    = embed.x + 'px';
+        el.style.top     = embed.y + 'px';
         this.engine.updateEmbedSize(embed.id, w, h);
-      } else if (!embed.width) {
+      } else if (embed.width) {
+        // Loaded from saved data — apply saved dimensions explicitly so the img
+        // is never left relying on percentage-height CSS resolution.
+        img.style.width  = embed.width  + 'px';
+        img.style.height = embed.height + 'px';
+      } else {
         const w = img.naturalWidth, h = img.naturalHeight;
-        el.style.width  = w + 'px';
-        el.style.height = h + 'px';
+        el.style.width   = w + 'px';
+        el.style.height  = h + 'px';
+        img.style.width  = w + 'px';
+        img.style.height = h + 'px';
         this.engine.updateEmbedSize(embed.id, w, h);
       }
     });
@@ -444,23 +453,26 @@ export class EmbedManager {
       e.preventDefault();
       const pid = e.pointerId;
       const rsX = e.clientX, rsY = e.clientY;
-      const rsW = el.offsetWidth,  rsH = el.offsetHeight;
+      // clientWidth/clientHeight gives the content size (excludes border) so the
+      // saved embed.width matches exactly what we set on el.style.width.
+      const rsW = el.clientWidth,  rsH = el.clientHeight;
+      let lastW = rsW, lastH = rsH;
 
       const onMove = ev => {
         if (ev.pointerId !== pid) return;
-        const newW = Math.max(40, rsW + (ev.clientX - rsX) / this.engine.scale);
-        const newH = naturalAR ? Math.round(newW * naturalAR) : Math.max(40, rsH + (ev.clientY - rsY) / this.engine.scale);
-        el.style.width  = newW + 'px';
-        el.style.height = newH + 'px';
-        img.style.width  = newW + 'px';
-        img.style.height = newH + 'px';
+        lastW = Math.max(40, rsW + (ev.clientX - rsX) / this.engine.scale);
+        lastH = naturalAR ? Math.round(lastW * naturalAR) : Math.max(40, rsH + (ev.clientY - rsY) / this.engine.scale);
+        el.style.width   = lastW + 'px';
+        el.style.height  = lastH + 'px';
+        img.style.width  = lastW + 'px';
+        img.style.height = lastH + 'px';
       };
       const onEnd = ev => {
         if (ev.pointerId !== pid) return;
         document.removeEventListener('pointermove',   onMove);
         document.removeEventListener('pointerup',     onEnd);
         document.removeEventListener('pointercancel', onEnd);
-        this.engine.updateEmbedSize(embed.id, el.offsetWidth, el.offsetHeight);
+        this.engine.updateEmbedSize(embed.id, lastW, lastH);
       };
       document.addEventListener('pointermove',   onMove);
       document.addEventListener('pointerup',     onEnd);
