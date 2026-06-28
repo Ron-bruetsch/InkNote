@@ -86,3 +86,4 @@ public record CreateInvestigationRequest(string Name, string? Description = null
 public record CreateInvEntityRequest(string Type, string Label, float X = 0, float Y = 0, string? Notes = null);
 public record UpdateInvEntityRequest(string? Label, string? Notes, float? X, float? Y, string? OsintJson);
 public record CreateInvRelationRequest(int SourceId, int TargetId, string? Label = null);
+public record LinkedInTextRequest(string Text);

@@ -903,6 +903,7 @@ input[type=range] {
   transition: background 0.1s;
 }
 .detail-osint-btn:hover { background: rgba(99,102,241,0.22); }
+.detail-open-link { text-decoration: none; display: inline-flex; align-items: center; }
 
 .detail-notes {
   flex: 1;
@@ -1017,6 +1018,23 @@ input[type=range] {
   padding: 8px 10px;
   border-radius: 5px;
 }
+.osint-raw-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.osint-raw-link:hover { opacity: 0.8; }
+.osint-suggest-link { color: var(--accent); text-decoration: none; }
+.osint-suggest-link:hover { text-decoration: underline; }
+.osint-platform-links { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.osint-platform-link {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 5px;
+  background: var(--surface2); color: var(--text);
+  text-decoration: none; font-size: 12px;
+  transition: background 0.15s;
+}
+.osint-platform-link:hover { background: rgba(99,102,241,0.18); }
+.osint-platform-name { font-weight: 500; flex-shrink: 0; min-width: 90px; color: var(--text); }
+.osint-platform-url { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--text3); }
+.osint-ext-icon { flex-shrink: 0; color: var(--text3); font-size: 11px; }
+.osint-platform-link:hover .osint-ext-icon { color: var(--accent); }
 
 /* ── Context menu ─────────────────────────────────────────────────────────── */
 
@@ -1056,3 +1074,129 @@ input[type=range] {
 .cm-item:hover { background: var(--surface); }
 .cm-item-danger { color: var(--red); }
 .cm-item-danger:hover { background: rgba(239,68,68,0.1); }
+.cm-item-open { text-decoration: none; color: var(--accent-h); }
+
+/* ── LinkedIn Analysis panel ──────────────────────────────────────────────── */
+
+.li-input-body { flex-direction: column; gap: 14px; }
+
+.li-mode { display: flex; flex-direction: column; gap: 6px; }
+.li-mode-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+
+.li-url-row { display: flex; gap: 6px; }
+.li-url-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+  min-width: 0;
+}
+.li-url-input:focus { border-color: var(--accent); }
+
+.li-fetch-btn, .li-analyze-btn, .li-retry-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.li-fetch-btn:hover, .li-analyze-btn:hover, .li-retry-btn:hover { opacity: 0.85; }
+
+.li-hint { font-size: 11px; color: var(--text-dim); margin: 0; line-height: 1.4; }
+
+.li-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 6px 8px;
+  resize: vertical;
+  outline: none;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  line-height: 1.4;
+}
+.li-text-input:focus { border-color: var(--accent); }
+
+.li-divider { text-align: center; font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+
+/* Results */
+.li-results-body { flex-direction: column; gap: 12px; }
+
+.li-profile-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.li-risk-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid;
+  margin-bottom: 4px;
+}
+.li-profile-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.li-profile-headline { font-size: 12px; color: var(--text-dim); }
+.li-profile-loc { font-size: 11px; color: var(--text-dim); }
+.li-parse-mode { font-size: 10px; color: var(--text-dim); margin-top: 2px; opacity: 0.6; }
+
+.li-section { display: flex; flex-direction: column; gap: 8px; }
+.li-section-title { font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+
+.li-tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.li-tag {
+  background: rgba(99,102,241,0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99,102,241,0.3);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.li-list { margin: 0; padding-left: 16px; font-size: 12px; color: var(--text); line-height: 1.6; }
+
+/* Vulnerability items */
+.li-vuln-item {
+  border-left: 3px solid;
+  padding: 8px 10px;
+  border-radius: 0 6px 6px 0;
+  background: rgba(255,255,255,0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.li-sev-critical { border-color: #ef4444; }
+.li-sev-high     { border-color: #f97316; }
+.li-sev-medium   { border-color: #eab308; }
+.li-sev-low      { border-color: #22d3ee; }
+
+.li-vuln-header { display: flex; align-items: center; gap: 8px; }
+.li-sev-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 4px;
+  background: rgba(255,255,255,0.08);
+  white-space: nowrap;
+}
+.li-vuln-cat { font-size: 11px; color: var(--text-dim); text-transform: capitalize; }
+.li-vuln-indicator { font-size: 11px; color: var(--text-dim); }
+.li-vuln-vector { font-size: 12px; color: var(--text); line-height: 1.4; }
+
+.li-lures-details { margin-top: 4px; }
+.li-lures-details summary { font-size: 11px; color: var(--accent); cursor: pointer; }
+.li-lure-list { margin: 4px 0 0; padding-left: 16px; font-size: 11px; color: var(--text); line-height: 1.6; font-style: italic; }

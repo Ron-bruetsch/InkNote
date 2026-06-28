@@ -105,3 +105,15 @@ export async function osintHibp(email) {
 export async function osintUsernames(username) {
   return (await fetch(`/api/osint/usernames?username=${encodeURIComponent(username)}`)).json();
 }
+
+export async function osintLinkedInUrl(url) {
+  return (await fetch(`/api/osint/linkedin?url=${encodeURIComponent(url)}`)).json();
+}
+
+export async function osintLinkedInText(text) {
+  return (await fetch('/api/osint/linkedin/text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  })).json();
+}

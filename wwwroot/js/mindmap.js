@@ -21,7 +21,7 @@ const OSINT_ACTIONS = {
   ip:       ['ipinfo', 'shodan'],
   email:    ['hibp'],
   username: ['usernames'],
-  person:   [],
+  person:   ['linkedin'],
   org:      [],
   phone:    [],
   url:      [],
@@ -36,6 +36,7 @@ const ACTION_LABEL = {
   shodan:    'Shodan',
   hibp:      'HIBP Breach Check',
   usernames: 'Social Platforms',
+  linkedin:  'LinkedIn Analysis',
 };
 
 export class MindMap {
@@ -187,6 +188,7 @@ export class MindMap {
         color: meta.color,
         shape: meta.shape,
         icon: meta.icon,
+        notes: e.notes ?? '',
       },
       position: { x: e.x || 0, y: e.y || 0 },
     };
@@ -210,6 +212,7 @@ export class MindMap {
         color: meta.color,
         shape: meta.shape,
         icon: meta.icon,
+        notes: entity.notes ?? '',
       },
       position: pos || { x: 0, y: 0 },
     });
@@ -332,7 +335,11 @@ export class MindMap {
     const osintSection = osintActions
       ? `<div class="cm-section">Enrich</div>${osintActions}<div class="cm-divider"></div>`
       : '';
+    const openSection = (type === 'url' && /^https?:\/\//.test(label))
+      ? `<a class="cm-item cm-item-open" href="${_esc(label)}" target="_blank" rel="noopener noreferrer">Open in browser ↗</a><div class="cm-divider"></div>`
+      : '';
     return `
+      ${openSection}
       ${osintSection}
       <button class="cm-item" data-action="connect">Connect to…</button>
       <button class="cm-item" data-action="edit">Edit label</button>
@@ -394,6 +401,12 @@ export class MindMap {
   // ── OSINT enrichment ──────────────────────────────────────────────────────
 
   async _runOsint(entityId, type, label, osintAction) {
+    // LinkedIn is special — needs user input first
+    if (osintAction === 'linkedin') {
+      this._showLinkedInInput(entityId, label);
+      return;
+    }
+
     this._showOsintLoading(ACTION_LABEL[osintAction] ?? osintAction, label);
 
     let result;
@@ -424,6 +437,189 @@ export class MindMap {
       node.data('osintJson', newJson);
       await invApi.updateEntity(this._invId, entityId, { osintJson: newJson });
     }
+  }
+
+  // ── LinkedIn input form ────────────────────────────────────────────────────
+
+  _showLinkedInInput(entityId, label) {
+    this._osintEl.style.display = 'flex';
+    this._osintEl.innerHTML = `
+      <div class="osint-header">
+        <span>LinkedIn Analysis → <strong>${_esc(label)}</strong></span>
+        <button class="osint-close" onclick="this.closest('#mindmap-osint-panel').style.display='none'">×</button>
+      </div>
+      <div class="osint-body li-input-body">
+        <div class="li-mode">
+          <div class="li-mode-label">Fetch public profile by URL</div>
+          <div class="li-url-row">
+            <input class="li-url-input" id="li-url" type="text" placeholder="https://linkedin.com/in/username">
+            <button class="li-fetch-btn" id="li-fetch-btn">Fetch</button>
+          </div>
+          <p class="li-hint">LinkedIn may block server-side requests — if it fails, use the text option below.</p>
+        </div>
+        <div class="li-divider">— or —</div>
+        <div class="li-mode">
+          <div class="li-mode-label">Paste profile text</div>
+          <p class="li-hint">While logged in to LinkedIn, open the profile and copy all the text (Ctrl+A, Ctrl+C). Paste it below for full analysis including skills, interests and experience.</p>
+          <textarea class="li-text-input" id="li-text" placeholder="Paste full LinkedIn profile text here…" rows="8"></textarea>
+          <button class="li-analyze-btn" id="li-analyze-btn">Analyze pasted text</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('li-fetch-btn').addEventListener('click', async () => {
+      const url = document.getElementById('li-url').value.trim();
+      if (!url) return;
+      await this._runLinkedIn(entityId, label, url, null);
+    });
+
+    document.getElementById('li-analyze-btn').addEventListener('click', async () => {
+      const text = document.getElementById('li-text').value.trim();
+      if (!text) return;
+      await this._runLinkedIn(entityId, label, null, text);
+    });
+  }
+
+  async _runLinkedIn(entityId, label, url, text) {
+    this._showOsintLoading('LinkedIn Analysis', label);
+    let result;
+    try {
+      result = url
+        ? await invApi.osintLinkedInUrl(url)
+        : await invApi.osintLinkedInText(text);
+    } catch (err) {
+      result = { success: false, error: String(err) };
+    }
+
+    if (!result.success) {
+      this._osintEl.innerHTML = `
+        <div class="osint-header">
+          <span>LinkedIn Analysis</span>
+          <button class="osint-close" onclick="this.closest('#mindmap-osint-panel').style.display='none'">×</button>
+        </div>
+        <div class="osint-body osint-error">
+          ${_esc(result.error ?? 'Unknown error')}
+          <br><br>
+          <button class="li-retry-btn" id="li-retry">Try with pasted text instead</button>
+        </div>
+      `;
+      document.getElementById('li-retry')?.addEventListener('click', () => this._showLinkedInInput(entityId, label));
+      return;
+    }
+
+    this._showLinkedInResults(entityId, label, result);
+
+    // Save OSINT data to entity
+    if (this._invId) {
+      const node = this._cy.$(`#e${entityId}`);
+      let existing = {};
+      try { existing = JSON.parse(node.data('osintJson') || '{}'); } catch {}
+      existing.linkedin = { profile: result.profile, socialEngineering: result.socialEngineering };
+      const newJson = JSON.stringify(existing);
+      node.data('osintJson', newJson);
+      await invApi.updateEntity(this._invId, entityId, { osintJson: newJson });
+    }
+  }
+
+  _showLinkedInResults(entityId, label, result) {
+    const p = result.profile ?? {};
+    const se = result.socialEngineering ?? {};
+    const suggestions = result.suggestions ?? [];
+
+    const riskColor = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#22d3ee' };
+    const sevIcon   = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
+
+    const riskBadge = se.riskRating
+      ? `<span class="li-risk-badge" style="background:${riskColor[se.riskRating]}22;color:${riskColor[se.riskRating]};border-color:${riskColor[se.riskRating]}55">
+           ${sevIcon[se.riskRating] ?? ''} Risk: ${se.riskRating.toUpperCase()}
+         </span>`
+      : '';
+
+    const profileHtml = `
+      <div class="li-profile-header">
+        ${riskBadge}
+        <div class="li-profile-name">${_esc(p.name ?? label)}</div>
+        ${p.headline ? `<div class="li-profile-headline">${_esc(p.headline)}</div>` : ''}
+        ${p.location ? `<div class="li-profile-loc">📍 ${_esc(p.location)}</div>` : ''}
+        ${p.parseMode ? `<div class="li-parse-mode">Source: ${_esc(p.parseMode.replace(/_/g,' '))}</div>` : ''}
+      </div>
+    `;
+
+    // Attack surface
+    const attackSurface = [
+      se.technicalExposure?.length ? `<div class="li-section-title">Technical exposure</div><div class="li-tag-list">${(se.technicalExposure ?? []).map(t => `<span class="li-tag">${_esc(t)}</span>`).join('')}</div>` : '',
+      se.contactVectors?.length ? `<div class="li-section-title">Contact vectors</div><ul class="li-list">${(se.contactVectors ?? []).map(v => `<li>${_esc(v)}</li>`).join('')}</ul>` : '',
+      se.trustNetworks?.length  ? `<div class="li-section-title">Trust networks / rapport</div><ul class="li-list">${(se.trustNetworks ?? []).slice(0,5).map(n => `<li>${_esc(n)}</li>`).join('')}</ul>` : '',
+    ].filter(Boolean).join('');
+
+    // Vulnerabilities
+    const vulnsHtml = (se.vulnerabilities ?? []).map(v => `
+      <div class="li-vuln-item li-sev-${_esc(v.severity)}">
+        <div class="li-vuln-header">
+          <span class="li-sev-badge">${sevIcon[v.severity] ?? ''} ${_esc(v.severity?.toUpperCase())}</span>
+          <span class="li-vuln-cat">${_esc(v.category?.replace(/_/g,' '))}</span>
+        </div>
+        <div class="li-vuln-indicator">🔍 ${_esc(v.indicator)}</div>
+        <div class="li-vuln-vector">${_esc(v.vector)}</div>
+        ${v.lures?.length ? `<details class="li-lures-details"><summary>Example lures / scripts</summary><ul class="li-lure-list">${v.lures.map(l => `<li>${_esc(l)}</li>`).join('')}</ul></details>` : ''}
+      </div>
+    `).join('');
+
+    // Suggested pretext
+    const pretextHtml = se.recommendedPretext?.length
+      ? `<div class="li-section-title">Recommended pretext approaches</div><ul class="li-list">${se.recommendedPretext.map(p => `<li>${_esc(p)}</li>`).join('')}</ul>`
+      : '';
+
+    // Graph suggestions
+    const suggestHtml = suggestions.length > 0 ? `
+      <div class="li-section-title">Add to graph (${suggestions.length})</div>
+      <div class="osint-suggestions">
+        ${suggestions.map((s, i) => `
+          <label class="osint-suggest-row">
+            <input type="checkbox" class="osint-cb" data-idx="${i}" checked>
+            <span class="osint-suggest-type osint-type-${_esc(s.type)}">${_esc(s.type)}</span>
+            ${_suggestLabelHtml(s, 38)}
+            <span class="osint-suggest-rel">${_esc(s.relationLabel)}</span>
+          </label>
+        `).join('')}
+        <button class="osint-add-btn" id="li-add-btn">Add selected to graph</button>
+      </div>
+    ` : '';
+
+    this._osintEl.innerHTML = `
+      <div class="osint-header">
+        <span>LinkedIn Analysis → <strong>${_esc(p.name ?? label)}</strong></span>
+        <button class="osint-close" onclick="this.closest('#mindmap-osint-panel').style.display='none'">×</button>
+      </div>
+      <div class="osint-body li-results-body">
+        ${profileHtml}
+        ${attackSurface ? `<div class="li-section">${attackSurface}</div>` : ''}
+        ${vulnsHtml ? `<div class="li-section"><div class="li-section-title">Attack vectors (${(se.vulnerabilities??[]).length})</div>${vulnsHtml}</div>` : ''}
+        ${pretextHtml ? `<div class="li-section">${pretextHtml}</div>` : ''}
+        ${suggestHtml ? `<div class="li-section">${suggestHtml}</div>` : ''}
+        <details class="osint-raw-details">
+          <summary>Raw data</summary>
+          <pre class="osint-raw">${_rawJsonWithLinks(result)}</pre>
+        </details>
+      </div>
+    `;
+
+    document.getElementById('li-add-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('li-add-btn');
+      if (!btn) return;
+      const checked = [...this._osintEl.querySelectorAll('.osint-cb:checked')]
+        .map(cb => suggestions[parseInt(cb.dataset.idx)]);
+      if (checked.length === 0) return;
+      btn.disabled = true; btn.textContent = 'Adding…';
+      for (const s of checked) {
+        const entity  = await invApi.addEntity(this._invId, s.type, s.label);
+        this.addEntity(entity);
+        const relation = await invApi.addRelation(this._invId, entityId, entity.id, s.relationLabel);
+        this.addRelation(relation);
+      }
+      this.onGraphChange?.();
+      btn.textContent = `Added ${checked.length} node${checked.length > 1 ? 's' : ''}`;
+    });
   }
 
   // ── OSINT results panel ───────────────────────────────────────────────────
@@ -459,7 +655,7 @@ export class MindMap {
           <label class="osint-suggest-row">
             <input type="checkbox" class="osint-cb" data-idx="${i}" checked>
             <span class="osint-suggest-type osint-type-${_esc(s.type)}">${_esc(s.type)}</span>
-            <span class="osint-suggest-label" title="${_esc(s.label)}">${_esc(s.label.length > 40 ? s.label.slice(0, 38) + '…' : s.label)}</span>
+            ${_suggestLabelHtml(s)}
             <span class="osint-suggest-rel">${_esc(s.relationLabel)}</span>
           </label>
         `).join('')}
@@ -473,10 +669,11 @@ export class MindMap {
         <button class="osint-close" onclick="this.closest('#mindmap-osint-panel').style.display='none'">×</button>
       </div>
       <div class="osint-body">
+        ${this._renderPlatformLinks(result.data)}
         ${suggestionsHtml}
         <details class="osint-raw-details">
           <summary>Raw data</summary>
-          <pre class="osint-raw">${_esc(JSON.stringify(result.data, null, 2))}</pre>
+          <pre class="osint-raw">${_rawJsonWithLinks(result.data)}</pre>
         </details>
       </div>
     `;
@@ -505,6 +702,24 @@ export class MindMap {
     this._osintEl.style.display = 'none';
   }
 
+  _renderPlatformLinks(data) {
+    if (!data?.results || !Array.isArray(data.results) || !data.results[0]?.Platform) return '';
+    const found = data.results.filter(r => r.Status === 'found');
+    if (found.length === 0) return '';
+    return `
+      <div class="osint-platform-links">
+        <div class="osint-suggest-title">Found accounts (${found.length})</div>
+        ${found.map(r => `
+          <a class="osint-platform-link" href="${_esc(r.Url)}" target="_blank" rel="noopener noreferrer">
+            <span class="osint-platform-name">${_esc(r.Platform)}</span>
+            <span class="osint-platform-url">${_esc(r.Url)}</span>
+            <span class="osint-ext-icon">↗</span>
+          </a>
+        `).join('')}
+      </div>
+    `;
+  }
+
   // ── Entity detail panel ───────────────────────────────────────────────────
 
   _showDetail(entityId, nodeData) {
@@ -521,6 +736,15 @@ export class MindMap {
 
     // OSINT action buttons
     const btnsEl = document.getElementById('detail-osint-btns');
+    if (nodeData.type === 'url' && /^https?:\/\//.test(nodeData.label)) {
+      const link = document.createElement('a');
+      link.className = 'detail-osint-btn detail-open-link';
+      link.textContent = 'Open ↗';
+      link.href = nodeData.label;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      btnsEl.appendChild(link);
+    }
     const actions = OSINT_ACTIONS[nodeData.type] ?? [];
     for (const a of actions) {
       const btn = document.createElement('button');
@@ -533,9 +757,6 @@ export class MindMap {
     // Notes
     const notesEl = document.getElementById('detail-notes');
     if (notesEl) {
-      // Load notes from DB lazily
-      invApi.updateEntity(this._invId, entityId, {}).catch(() => {});
-      // We store notes in the cy node data after first load
       notesEl.value = nodeData.notes ?? '';
       let notesTimer;
       notesEl.addEventListener('input', () => {
@@ -565,4 +786,21 @@ function _esc(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function _suggestLabelHtml(s, maxLen = 40) {
+  const truncated = s.label.length > maxLen ? s.label.slice(0, maxLen - 2) + '…' : s.label;
+  const display = _esc(truncated);
+  const title = _esc(s.label);
+  if (/^https?:\/\//.test(s.label)) {
+    return `<a class="osint-suggest-label osint-suggest-link" href="${title}" target="_blank" rel="noopener noreferrer" title="${title}">${display}</a>`;
+  }
+  return `<span class="osint-suggest-label" title="${title}">${display}</span>`;
+}
+
+function _rawJsonWithLinks(data) {
+  const json = _esc(JSON.stringify(data, null, 2));
+  return json.replace(/https?:\/\/[^&<>\s"]+/g, url =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer" class="osint-raw-link">${url}</a>`
+  );
 }

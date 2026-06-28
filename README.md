@@ -23,6 +23,7 @@ A self-hosted digital notebook app with freehand drawing and OSINT investigation
   - **IP** → geolocation / ASN / PTR via ipinfo.io; open ports, banners, CVEs via Shodan
   - **Email** → breach exposure via HaveIBeenPwned
   - **Username** → social platform correlation across 23 platforms (GitHub, Reddit, Telegram, TikTok, YouTube, Twitch, Instagram, Twitter/X, and more)
+  - **Person** → LinkedIn profile analysis: fetch public profile by URL, or paste full profile text (copied while logged in) for complete skills/interests/experience analysis; generates a structured social engineering report with per-vulnerability attack vectors, example lures, recommended pretext approaches, and SE risk rating (low → critical)
 - Enrichment results show suggested nodes; select which ones to add to the graph
 - Raw OSINT data stored per entity; annotate with free-text notes
 - Side-by-side layout: graph on the left, freehand canvas on the right for handwritten notes
@@ -43,6 +44,7 @@ A self-hosted digital notebook app with freehand drawing and OSINT investigation
 | OSINT — subdomains | crt.sh certificate transparency API |
 | OSINT — Shodan | Shodan API (API key required) |
 | OSINT — HIBP | HaveIBeenPwned API v3 (API key required) |
+| OSINT — LinkedIn | HtmlAgilityPack (SEO JSON-LD + OG parsing) + rule-based SE analysis |
 
 ## Requirements
 
@@ -93,7 +95,8 @@ InkNote/
 │   ├── OsintController.cs          # OSINT enrichment endpoints
 │   └── LinkPreviewController.cs    # Server-side URL scraper for embed cards
 ├── Services/
-│   └── OsintService.cs             # DNS, WHOIS, subdomains, IP, Shodan, HIBP, username probing
+│   ├── OsintService.cs             # DNS, WHOIS, subdomains, IP, Shodan, HIBP, username probing
+│   └── LinkedInService.cs          # LinkedIn public profile fetch + social engineering analysis
 ├── Data/
 │   └── AppDbContext.cs             # EF Core context (5 tables)
 ├── Models/
@@ -155,9 +158,13 @@ InkNote/
 | `GET` | `/api/osint/shodan?target=` | Shodan host data (API key required) |
 | `GET` | `/api/osint/hibp?email=` | HaveIBeenPwned breach check (API key required) |
 | `GET` | `/api/osint/usernames?username=` | Social platform correlation (23 platforms) |
+| `GET` | `/api/osint/linkedin?url=` | LinkedIn public profile analysis (best-effort fetch) |
+| `POST` | `/api/osint/linkedin/text` | LinkedIn profile analysis from pasted text `{text}` |
 
 ## Notes
 
 - Single-user only — no authentication.
 - No build step for the frontend; ES modules are loaded directly by the browser.
 - Username correlation and some platform checks may be unreliable due to bot-detection on Instagram, Twitter/X, and similar sites — results should be treated as leads, not confirmed findings.
+- LinkedIn profile URL fetch is best-effort — LinkedIn actively blocks server-side requests. If it fails (HTTP 999 / login wall), use **Paste profile text**: while logged in to LinkedIn, open the target profile, select all text (Ctrl+A), copy, and paste it into the analysis form. This gives access to the full profile including skills, interests, certifications, and experience — the data that makes the social engineering report most useful.
+- The LinkedIn social engineering analysis is rule-based pattern matching on profile content. It maps indicators (recent job changes, tech stack exposure, financial roles, certifications, languages, volunteer work, alumni networks) to concrete attack vectors with example lures and recommended pretext approaches. Use it as a starting point for a social engineering section in a pentest report.

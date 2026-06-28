@@ -10,6 +10,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         ?? "Data Source=inknote.db"));
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<OsintService>();
+builder.Services.AddScoped<InkNote.Services.LinkedInService>();
 
 var app = builder.Build();
 

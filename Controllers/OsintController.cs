@@ -1,3 +1,4 @@
+using InkNote.Models;
 using InkNote.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -5,7 +6,7 @@ namespace InkNote.Controllers;
 
 [ApiController]
 [Route("api/osint")]
-public class OsintController(OsintService osint) : ControllerBase
+public class OsintController(OsintService osint, LinkedInService linkedin) : ControllerBase
 {
     [HttpGet("dns")]
     public async Task<IActionResult> Dns([FromQuery] string target)
@@ -54,5 +55,19 @@ public class OsintController(OsintService osint) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(username)) return BadRequest("username required");
         return Ok(await osint.UsernamesAsync(username.Trim()));
+    }
+
+    [HttpGet("linkedin")]
+    public async Task<IActionResult> LinkedIn([FromQuery] string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return BadRequest("url required");
+        return Ok(await linkedin.FetchByUrlAsync(url.Trim()));
+    }
+
+    [HttpPost("linkedin/text")]
+    public IActionResult LinkedInText([FromBody] LinkedInTextRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Text)) return BadRequest("text required");
+        return Ok(linkedin.AnalyzeText(request.Text));
     }
 }
