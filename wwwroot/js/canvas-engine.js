@@ -8,6 +8,8 @@ export class CanvasEngine {
     this.embedsLayer = embedsLayer;
     this.ctx = committed.getContext('2d');
     this.actCtx = active.getContext('2d');
+    this._offscreen = document.createElement('canvas');
+    this._offCtx = this._offscreen.getContext('2d');
 
     this.tx = 0; this.ty = 0; this.scale = 1;
 
@@ -85,7 +87,11 @@ export class CanvasEngine {
     this.undoStack.push(op);
     if (op.type === 'stroke') {
       this.strokes.push(op.stroke);
-      this._renderStroke(this.ctx, op.stroke);
+      if (op.stroke.tool === 'eraser') {
+        this._renderAll();
+      } else {
+        this._renderStroke(this.ctx, op.stroke);
+      }
     } else if (op.type === 'add_embed') {
       this.embeds.push(op.embed);
       this._syncEmbeds();
@@ -180,21 +186,26 @@ export class CanvasEngine {
     const ctx = this.ctx;
     const w = this.committed.width;
     const h = this.committed.height;
+
+    // Render strokes onto transparent offscreen canvas so destination-out
+    // cuts holes in the stroke layer rather than the background fill.
+    const offCtx = this._offCtx;
+    offCtx.clearRect(0, 0, w, h);
+    offCtx.save();
+    offCtx.translate(this.tx, this.ty);
+    offCtx.scale(this.scale, this.scale);
+    for (const stroke of this.strokes) {
+      offCtx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
+      this._renderStrokeRaw(offCtx, stroke);
+    }
+    offCtx.globalCompositeOperation = 'source-over';
+    offCtx.restore();
+
+    // Composite background + stroke layer onto the committed canvas.
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = '#0f0f14';
     ctx.fillRect(0, 0, w, h);
-
-    ctx.save();
-    ctx.translate(this.tx, this.ty);
-    ctx.scale(this.scale, this.scale);
-
-    const prev = ctx.globalCompositeOperation;
-    for (const stroke of this.strokes) {
-      ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
-      this._renderStrokeRaw(ctx, stroke);
-    }
-    ctx.globalCompositeOperation = prev;
-    ctx.restore();
+    ctx.drawImage(this._offscreen, 0, 0);
   }
 
   _renderStroke(ctx, stroke) {
@@ -297,11 +308,9 @@ export class CanvasEngine {
     this.actCtx.translate(this.tx, this.ty);
     this.actCtx.scale(this.scale, this.scale);
     if (this.currentStroke.tool === 'eraser') {
-      this.actCtx.strokeStyle = 'rgba(255,80,80,0.4)';
-      this.actCtx.lineWidth = this.currentStroke.size;
-      this.actCtx.lineCap = 'round';
-      this.actCtx.globalCompositeOperation = 'source-over';
-      this._drawSmooth(this.actCtx, this.currentStroke.points);
+      this.strokes.push(this.currentStroke);
+      this._renderAll();
+      this.strokes.pop();
     } else {
       this.actCtx.globalCompositeOperation = 'source-over';
       this._renderStrokeRaw(this.actCtx, this.currentStroke);
@@ -589,6 +598,8 @@ export class CanvasEngine {
     this.committed.height = h;
     this.active.width = w;
     this.active.height = h;
+    this._offscreen.width = w;
+    this._offscreen.height = h;
     this._renderAll();
   }
 
